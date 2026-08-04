@@ -1,2 +1,312 @@
-# bitflash-core
-Bitflash - CPU-mined with RandomX, anonymous .btf addressing over Nostr, fair launch.
+ Bitflash `BTF`
+
+CPU-only cryptocurrency. A revival of Bitcoin 0.1.0 with RandomX proof of work and anonymous `.btf` addressing over Nostr.
+
+---
+
+## What it is
+
+Bitflash keeps Satoshi's original consensus rules and replaces two things:
+
+**RandomX proof of work.** Memory-hard algorithm used by Monero. A laptop competes equally with a server. ASICs and GPUs have no advantage.
+
+**Anonymous addressing.** Every node has a `.btf` address derived from its public key, similar to a Tor `.onion`. Nodes reach each other through encrypted rendezvous tunnels, so no port forwarding is needed and a node behind CGNAT works normally.
+
+No premine. No ICO. 50 BTF per block, halving on schedule, 21M cap, ~2 minute blocks.
+
+### What `.btf` does and does not hide
+
+Worth being precise, because the difference matters if you are relying on it.
+
+**A peer you reach over `.btf` does not learn your IP.** All outbound connections go through a rendezvous tunnel; there is no IP-based peer dialling left in the node. The relay forwards encrypted bytes and cannot read or alter them.
+
+**The rendezvous relay does see your IP.** It has to — it is the thing your TCP connection terminates on. Relays are run by volunteers, so treat that as a party who knows you are on the network.
+
+**The node still listens on 8433.** Nothing dials by IP any more, but the listener is still there, so anyone who already knows your address and can reach that port may connect directly. If that matters to you, firewall it.
+
+This is unlinkability between peers, not anonymity against a network observer. It is not Tor.
+
+---
+
+## Quick start
+
+**Linux:** make the `.AppImage` executable and run it.
+
+**Windows:** extract the `-windows.zip` and run `Bitflash.exe`.
+
+**Keep your node current.** Consensus rules have changed since the first
+releases — 1.0.0 fixed a bug that let anyone spend anyone's coins. A node on an older build will accept
+blocks that current nodes reject, which puts it on a different chain without any
+warning.
+
+Your wallet and chain data live in `%APPDATA%\Bitflash` (Windows) or
+`~/.bitflash` (Linux) and are shared by every version, so upgrading is just
+replacing the binary. Never delete that directory to "fix" something without a
+backup — it holds your keys.
+
+---
+
+## Your wallet: the phrase and the file
+
+The derivation is written down in [docs/derivation.md](docs/derivation.md), with
+test vectors and a script that reproduces them from scratch. It is there so the
+twelve words keep working even if this software does not: paths, address format
+and encoding, enough to recover the keys with ordinary tools and no Bitflash
+code at all.
+
+### The recovery phrase
+
+```
+bitflash -newphrase                          # create it, show it once, exit
+bitflash -restorephrase="twelve words here"  # rebuild a wallet from it
+```
+
+`-newphrase` installs a BIP32 seed, derives the wallet's key pool and default
+receiving address from it, and prints the words once. It refuses if a phrase
+already exists: replacing one silently would strand every coin on addresses the
+written-down words no longer describe.
+
+`-restorephrase` installs the seed and walks forward in batches of a hundred
+addresses, rescanning the chain after each and stopping when a whole batch turns
+up nothing. `-restoredepth=N` looks further. `-showderived=N` lists the addresses
+a phrase produces, so you can check one before trusting it.
+
+The same two operations are in the window, under **Wallet Safety**.
+
+**The words are printed to the terminal and nowhere else** — never to
+`debug.log`, which is the file people are routinely asked to attach to an issue.
+
+**What the phrase does not cover.** Keys that existed *before* the seed was
+installed are random. They are not derived from it and they do not come back
+from the words. The wallet names such an address `Your Address (created before
+the recovery phrase)` so you can tell them apart. This is why file backups still
+matter.
+
+### The file
+
+**Copying `wallet.dat` on its own is not a backup.** Berkeley DB ties the file
+to the environment in the `database/` subdirectory beside it, so a lone
+`wallet.dat` will not open elsewhere — the keys are all still in there, and the
+file is refused anyway. Use the built-in command, which writes a copy that
+stands on its own:
+
+```
+bitflash -backupwallet=/path/to/wallet-backup.dat
+```
+
+It loads the wallet, writes the copy, and exits without starting the node. If
+you would rather copy by hand, shut the node down first and take the **whole**
+data directory, not just `wallet.dat`.
+
+A file backup covers what a phrase cannot: keys from before the seed, and any
+key the wallet acquired by import. It also has a margin of its own — the wallet
+keeps a pool of 100 pre-generated keys, so a backup covers the next 100 mining
+rewards or receive addresses. Take a fresh one after mining for a while, after
+creating many receive addresses, and before moving the wallet to another machine.
+
+The GUI has a **Backup Wallet** button and a **Wallet Safety** view, which fills
+the key pool before writing the backup.
+
+### Finding coins the wallet never recorded
+
+```
+bitflash -rescan
+```
+
+Walks the chain for coins a key of yours owns but the wallet has no record of —
+after importing keys, or after restoring a file from another machine.
+`-importwallet` runs this automatically. A scan asked for with no chain data
+loaded is refused rather than reported as "no transactions found", which reads
+as a verdict to somebody who has just lost a wallet.
+
+### When wallet.dat itself will not open
+
+Everything above still runs through Berkeley DB. If the database is the thing
+that is broken — a build that will not read it, a file truncated by a bad copy,
+an environment beyond recovery — the keys are usually still fine, and you can
+take them out as text:
+
+```
+bitflash -dumpwallet=/path/to/keys.txt
+bitflash -importwallet=/path/to/keys.txt   # into any wallet, on any machine
+```
+
+One key per line with its address and label, no database and no environment.
+Importing skips keys the wallet already holds, so running it twice is safe, and
+an unreadable line is reported and stepped over rather than abandoning the rest.
+Restart the node afterwards so it scans the chain for transactions belonging to
+the new keys.
+
+**The dump is your private keys in the clear.** Anyone who reads that file can
+spend those coins. It is written owner-only on Linux and macOS; on Windows it
+inherits whatever the containing folder allows, so choose the folder carefully.
+Move it somewhere safe and delete the copy. `-dumpwallet` will not overwrite an
+existing file.
+
+---
+
+## Mining
+
+Open **Options** from the menu bar. Under Mining Mode:
+
+**Solo** — mine directly to your wallet. Default.
+
+**Operator** — run a pool. The pool server uses `.btf` rendezvous only. The window shows the pool's `.btf` address, discovered pools, and owed payouts.
+
+Pool announcements are published on Nostr with live status fields, so external tools can query the latest pool state by `.btf` address.
+
+**Participant** — mine to someone else's pool. Enter or select the pool's `.btf` address and enable Start Mining.
+
+SRBMiner and XMRig connect to operator pools through the `.btf` path:
+
+```bash
+SRBMiner-MULTI --algorithm randomx --pool POOL_BTF_ADDRESS --wallet YOUR_BTF_ADDRESS --password x
+xmrig -a rx/0 -o POOL_BTF_ADDRESS -u YOUR_BTF_ADDRESS -p x
+```
+
+---
+
+## Headless / server mode
+
+```bash
+./bitflash -nogui                     # node only
+./bitflash -nogui -gen                # node + solo mining
+./bitflash -nogui -gen -operator      # pool operator
+./bitflash -nogui -gen -participant=POOL_BTF_ADDRESS  # mine to pool
+```
+
+Every option takes `-` or `/`. **Under MSYS2 use the `-` form** — the shell
+rewrites a leading slash into a path before the node ever sees it.
+
+**The mining mode is remembered between restarts** since 1.2.11, so a node that
+was mining comes back mining. A `-gen`, `-operator` or `-participant` flag always
+wins over what was stored, and the log says on every start which of the two
+decided. Passing the flag anyway is the safe habit: it survives a wallet that
+came from an older build.
+
+Other options worth knowing:
+
+```bash
+-datadir=PATH    # wallet and chain data elsewhere
+-port=N          # P2P listen port, default 8433
+-debug           # verbose log; without it debug.log is nearly silent
+-help            # full list
+```
+
+`-port` plus `-datadir` is what lets two nodes share one machine. Both are
+needed — the data directory takes an exclusive lock, so a second node pointed at
+the same one will refuse to start.
+
+### When something looks wrong
+
+**Menu > Diagnostics**, and the same report in `debug.log` every ten minutes:
+peers held against peers `select()` is actually watching, blocks received and how
+many arrived without a parent, the proof-of-work mode with the live miner thread
+count, sockets by the part of the program that opened them, and per peer how long
+since the last message each way. There is a copy button — if you open an issue,
+paste that.
+
+It exists because every hard problem in this project so far was found from
+*outside* the node: sockets read over WMI from another machine, memory compared
+against a number in a README, a `grep` over somebody's log. In each case the node
+knew and had no way to say so.
+
+As a systemd service:
+
+```ini
+[Unit]
+Description=Bitflash node
+After=network.target
+
+[Service]
+ExecStart=/opt/bitflash/bitflash -nogui -gen -operator
+Restart=always
+User=bitcoin
+WorkingDirectory=/opt/bitflash
+
+[Install]
+WantedBy=multi-user.target
+```
+
+---
+
+## How nodes find each other
+
+A node publishes a **self-certifying descriptor**: its `.btf` address, an
+encryption key, and the rendezvous relay where it is currently reachable, signed
+with the key the address decodes to. Nobody can publish a descriptor for an
+address they do not own, so a hostile relay can withhold descriptors but cannot
+forge one.
+
+Discovery runs on four layers, so no single failure takes the network down:
+
+| | |
+|---|---|
+| **Nostr relays** | where descriptors are published and looked up |
+| **Rendezvous relays** | the tunnel itself, where two nodes are paired |
+| **Peer cache** | peers that answered last time, saved to `btfpeers.json` and dialled on start before any relay is contacted |
+| **Peer exchange** | connected nodes hand each other signed descriptors, so discovery keeps working while relays are down |
+
+Peer exchange carries the same signed descriptors, verified the same way, so a
+peer passing one on is trusted for nothing.
+
+The cache is what makes a restart fast: on a clean install the first peer takes
+about 36 seconds, and on the next start about 2.
+
+---
+
+## Running a relay
+
+Relays are the meeting points that let nodes behind NAT connect to each other. More relays make the network more resilient.
+
+```bash
+sudo bash relay/install-bitflash-relay.sh 8434
+./bitflash -nogui -announcerelay=YOUR_PUBLIC_IP:8434
+```
+
+Relays forward encrypted bytes and cannot read or modify traffic.
+
+---
+
+## Build from source
+
+**Linux:**
+```bash
+make linux
+```
+Installs deps via apt, builds libsecp256k1 and RandomX, produces `Bitflash-*.AppImage`.
+
+**Windows (MSYS2 UCRT64):**
+```bash
+make windows
+```
+Installs deps via pacman, produces `Bitflash-*-windows.zip`.
+
+---
+
+## At a glance
+
+| | |
+|---|---|
+| Ticker | BTF |
+| Proof of work | RandomX (CPU, memory-hard) |
+| Block time | ~2 minutes |
+| Difficulty retarget | every 30 blocks (~1 hour) |
+| Block reward | 50 BTF, halving every 210,000 blocks |
+| Halving interval | **~292 days** at target block time |
+| Max supply | 21,000,000 BTF |
+| Coinbase maturity | 100 blocks (~3.3 hours) before mined coins can be spent |
+| Max signature ops | 20,000 per block |
+| P2P port | 8433 |
+| Addressing | `.btf` rendezvous — see the caveats above |
+| Premine | None |
+| Pool server | Built-in — `.btf` rendezvous only |
+| Wallet recovery | Twelve-word phrase (BIP39 + BIP32), plus file backup |
+
+The halving interval is the number most people get wrong coming from Bitcoin.
+Same 210,000 blocks, but at two minutes instead of ten, so it arrives in about
+ten months rather than four years.
+
+---
+
+MIT. Built on Bitcoin 0.1.0 (Satoshi Nakamoto, 2009).
