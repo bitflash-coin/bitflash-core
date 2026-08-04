@@ -1,7 +1,5 @@
 ## Bitflash `BTF`
-
 CPU-only cryptocurrency. A revival of Bitcoin 0.1.0 with RandomX proof of work and anonymous `.btf` addressing over Nostr.
----
 
 ## Bitflash community
 Discord: https://discord.gg/TJG6vnXS9
