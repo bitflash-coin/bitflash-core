@@ -1,0 +1,62 @@
+# Build output
+src/obj/
+*.o
+*.exe
+*.a
+*.dll
+bitflash-node
+src/bitflash-node
+
+# Release artefacts (produced by 'make windows' / 'make linux')
+Bitflash-*-windows/
+Bitflash-*-windows.zip
+Bitflash-*.AppImage
+bitflash-node-*-x86_64
+SHA256SUMS
+SHA256SUMS.asc
+
+# Runtime data / logs
+debug.log
+db.log
+*.dat
+wallet.dat
+nostr.key
+btf_enc.key
+
+# Third-party build trees (rebuilt by the build scripts)
+RandomX/
+deps/
+secp256k1/
+secp256k1-build/
+
+# Distributable binaries (published as GitHub Releases, not committed)
+dist/
+*.tar.gz
+*.zip
+
+# Editor/OS cruft
+.DS_Store
+Thumbs.db
+src/bitflash
+
+# Key material and secrets the node creates in its data directory.
+# *.dat above already covers wallet.dat, but these are not .dat files and are
+# every bit as sensitive: btf_enc.key and nostr.key are this node's .btf
+# identity, and walletrpc.token is bearer authority to spend from the wallet.
+*.key
+btf_enc.key
+nostr.key
+walletrpc.token
+
+# Wallet/key backups
+*.tgz
+*.tar.gz
+bitflash-keys-*
+
+# Mempool dump, if a node is configured to write one
+mempool.txt
+
+# Patches and scratch files kept alongside a working tree
+*.patch
+*.rej
+*.orig
